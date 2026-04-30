@@ -1,0 +1,22 @@
+This error usually happens because Terraform sees the new provider in your code but hasn't "locked in" the specific version or downloaded the necessary drivers to your local .terraform folder.
+
+Even if you ran terraform init earlier, adding a new provider or changing the configuration often requires a fresh initialization to sync the lock file (.terraform.lock.hcl).
+
+The Solution
+Run the following command to force Terraform to re-evaluate your providers and update the lock file:
+
+Bash
+terraform init -upgrade
+Why did this happen?
+Missing Lock Entry: Terraform uses a lock file to ensure that everyone on your team (or you, in the future) uses the exact same version of the Google Cloud provider.
+
+Configuration Change: When you added provider "google" to your main.tf, Terraform realized it didn't have a recorded "checksum" for that provider in your current directory's lock file.
+
+Troubleshooting Steps (If the error persists)
+If terraform init -upgrade doesn't clear it, try these "deep clean" steps:
+
+Delete the local lock file: rm .terraform.lock.hcl
+
+Remove the cached modules/providers: rm -rf .terraform/
+
+Re-initialize: terraform init

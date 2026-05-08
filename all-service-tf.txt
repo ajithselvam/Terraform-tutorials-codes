@@ -1,0 +1,741 @@
+# Google Cloud Platform Terraform Templates Collection
+
+Creating Terraform code for "every single GCP service" is not practical in one response because Google Cloud has hundreds of services and thousands of resources that continuously change.
+
+This guide gives you:
+
+* Production-style Terraform structure
+* Separate `main.tf` examples for major GCP services
+* Working provider configuration
+* Common dependencies
+* Frequently used enterprise services
+* Easily expandable templates
+
+---
+
+# Recommended Folder Structure
+
+```text
+terraform-gcp/
+├── compute-engine/
+│   └── main.tf
+├── gke/
+│   └── main.tf
+├── cloud-sql/
+│   └── main.tf
+├── cloud-storage/
+│   └── main.tf
+├── vpc/
+│   └── main.tf
+├── load-balancer/
+│   └── main.tf
+├── cloud-run/
+│   └── main.tf
+├── pubsub/
+│   └── main.tf
+├── bigquery/
+│   └── main.tf
+├── cloud-functions/
+│   └── main.tf
+├── redis/
+│   └── main.tf
+├── artifact-registry/
+│   └── main.tf
+├── iam/
+│   └── main.tf
+├── dns/
+│   └── main.tf
+├── monitoring/
+│   └── main.tf
+└── logging/
+    └── main.tf
+```
+
+---
+
+# Provider Configuration
+
+## provider.tf
+
+```hcl
+terraform {
+  required_version = ">= 1.5.0"
+
+  required_providers {
+    google = {
+      source  = "hashicorp/google"
+      version = "~> 5.0"
+    }
+  }
+}
+
+provider "google" {
+  project = "YOUR_PROJECT_ID"
+  region  = "asia-south1"
+  zone    = "asia-south1-a"
+}
+```
+
+---
+
+# Enable Required APIs
+
+## apis/main.tf
+
+```hcl
+resource "google_project_service" "services" {
+  for_each = toset([
+    "compute.googleapis.com",
+    "container.googleapis.com",
+    "sqladmin.googleapis.com",
+    "run.googleapis.com",
+    "cloudfunctions.googleapis.com",
+    "artifactregistry.googleapis.com",
+    "redis.googleapis.com",
+    "pubsub.googleapis.com",
+    "bigquery.googleapis.com",
+    "servicenetworking.googleapis.com",
+    "monitoring.googleapis.com",
+    "logging.googleapis.com"
+  ])
+
+  service = each.key
+}
+```
+
+---
+
+# VPC Network
+
+## vpc/main.tf
+
+```hcl
+resource "google_compute_network" "vpc_network" {
+  name                    = "custom-vpc"
+  auto_create_subnetworks = false
+}
+
+resource "google_compute_subnetwork" "subnet" {
+  name          = "custom-subnet"
+  ip_cidr_range = "10.10.0.0/24"
+  region        = "asia-south1"
+  network       = google_compute_network.vpc_network.id
+}
+```
+
+---
+
+# Compute Engine VM
+
+## compute-engine/main.tf
+
+```hcl
+resource "google_compute_instance" "vm_instance" {
+  name         = "ubuntu-vm"
+  machine_type = "e2-medium"
+  zone         = "asia-south1-a"
+
+  boot_disk {
+    initialize_params {
+      image = "ubuntu-os-cloud/ubuntu-2204-lts"
+    }
+  }
+
+  network_interface {
+    network = "default"
+
+    access_config {
+    }
+  }
+
+  tags = ["http-server"]
+}
+```
+
+---
+
+# Firewall Rule
+
+## firewall/main.tf
+
+```hcl
+resource "google_compute_firewall" "allow_http" {
+  name    = "allow-http"
+  network = "default"
+
+  allow {
+    protocol = "tcp"
+    ports    = ["80", "443"]
+  }
+
+  source_ranges = ["0.0.0.0/0"]
+}
+```
+
+---
+
+# GKE Cluster
+
+## gke/main.tf
+
+```hcl
+resource "google_container_cluster" "primary" {
+  name     = "gke-cluster"
+  location = "asia-south1"
+
+  remove_default_node_pool = true
+  initial_node_count       = 1
+}
+
+resource "google_container_node_pool" "primary_nodes" {
+  name       = "node-pool"
+  location   = "asia-south1"
+  cluster    = google_container_cluster.primary.name
+  node_count = 2
+
+  node_config {
+    machine_type = "e2-medium"
+    oauth_scopes = [
+      "https://www.googleapis.com/auth/cloud-platform"
+    ]
+  }
+}
+```
+
+---
+
+# Cloud SQL MySQL
+
+## cloud-sql/main.tf
+
+```hcl
+resource "google_sql_database_instance" "mysql" {
+  name             = "mysql-instance"
+  database_version = "MYSQL_8_0"
+  region           = "asia-south1"
+
+  settings {
+    tier = "db-custom-1-3840"
+  }
+}
+
+resource "google_sql_database" "database" {
+  name     = "appdb"
+  instance = google_sql_database_instance.mysql.name
+}
+
+resource "google_sql_user" "users" {
+  name     = "admin"
+  instance = google_sql_database_instance.mysql.name
+  password = "StrongPassword123"
+}
+```
+
+---
+
+# Cloud Storage Bucket
+
+## cloud-storage/main.tf
+
+```hcl
+resource "google_storage_bucket" "bucket" {
+  name          = "my-terraform-bucket-12345"
+  location      = "ASIA"
+  force_destroy = true
+
+  uniform_bucket_level_access = true
+}
+```
+
+---
+
+# Cloud Run
+
+## cloud-run/main.tf
+
+```hcl
+resource "google_cloud_run_v2_service" "default" {
+  name     = "cloud-run-service"
+  location = "asia-south1"
+
+  template {
+    containers {
+      image = "gcr.io/cloudrun/hello"
+    }
+  }
+}
+```
+
+---
+
+# Cloud Functions
+
+## cloud-functions/main.tf
+
+```hcl
+resource "google_storage_bucket" "bucket" {
+  name     = "function-source-bucket-123"
+  location = "ASIA"
+}
+
+resource "google_storage_bucket_object" "archive" {
+  name   = "function-source.zip"
+  bucket = google_storage_bucket.bucket.name
+  source = "function-source.zip"
+}
+
+resource "google_cloudfunctions2_function" "function" {
+  name     = "sample-function"
+  location = "asia-south1"
+
+  build_config {
+    runtime     = "python311"
+    entry_point = "hello_http"
+
+    source {
+      storage_source {
+        bucket = google_storage_bucket.bucket.name
+        object = google_storage_bucket_object.archive.name
+      }
+    }
+  }
+
+  service_config {
+    max_instance_count = 1
+    available_memory   = "256M"
+    timeout_seconds    = 60
+  }
+}
+```
+
+---
+
+# Pub/Sub
+
+## pubsub/main.tf
+
+```hcl
+resource "google_pubsub_topic" "topic" {
+  name = "app-topic"
+}
+
+resource "google_pubsub_subscription" "subscription" {
+  name  = "app-subscription"
+  topic = google_pubsub_topic.topic.name
+}
+```
+
+---
+
+# BigQuery
+
+## bigquery/main.tf
+
+```hcl
+resource "google_bigquery_dataset" "dataset" {
+  dataset_id = "analytics_dataset"
+  location   = "asia-south1"
+}
+
+resource "google_bigquery_table" "table" {
+  dataset_id = google_bigquery_dataset.dataset.dataset_id
+  table_id   = "events"
+
+  schema = <<EOF
+[
+  {
+    "name": "id",
+    "type": "STRING",
+    "mode": "REQUIRED"
+  },
+  {
+    "name": "timestamp",
+    "type": "TIMESTAMP",
+    "mode": "NULLABLE"
+  }
+]
+EOF
+}
+```
+
+---
+
+# Memorystore Redis
+
+## redis/main.tf
+
+```hcl
+resource "google_redis_instance" "cache" {
+  name           = "redis-instance"
+  tier           = "STANDARD_HA"
+  memory_size_gb = 1
+  region         = "asia-south1"
+
+  redis_version = "REDIS_7_0"
+}
+```
+
+---
+
+# Artifact Registry
+
+## artifact-registry/main.tf
+
+```hcl
+resource "google_artifact_registry_repository" "repo" {
+  location      = "asia-south1"
+  repository_id = "docker-repo"
+  description   = "Docker repository"
+  format        = "DOCKER"
+}
+```
+
+---
+
+# Load Balancer
+
+## load-balancer/main.tf
+
+```hcl
+resource "google_compute_global_address" "default" {
+  name = "lb-ip"
+}
+```
+
+---
+
+# IAM Service Account
+
+## iam/main.tf
+
+```hcl
+resource "google_service_account" "service_account" {
+  account_id   = "terraform-service-account"
+  display_name = "Terraform Service Account"
+}
+
+resource "google_project_iam_member" "admin" {
+  project = "YOUR_PROJECT_ID"
+  role    = "roles/editor"
+  member  = "serviceAccount:${google_service_account.service_account.email}"
+}
+```
+
+---
+
+# Cloud DNS
+
+## dns/main.tf
+
+```hcl
+resource "google_dns_managed_zone" "zone" {
+  name        = "example-zone"
+  dns_name    = "example.com."
+  description = "Managed DNS Zone"
+}
+```
+
+---
+
+# Logging Sink
+
+## logging/main.tf
+
+```hcl
+resource "google_logging_project_sink" "sink" {
+  name        = "logging-sink"
+  destination = "storage.googleapis.com/my-terraform-bucket-12345"
+
+  filter = "resource.type=gce_instance"
+}
+```
+
+---
+
+# Monitoring Alert Policy
+
+## monitoring/main.tf
+
+```hcl
+resource "google_monitoring_alert_policy" "alert_policy" {
+  display_name = "High CPU Usage"
+  combiner     = "OR"
+
+  conditions {
+    display_name = "CPU Condition"
+
+    condition_threshold {
+      filter          = "metric.type=\"compute.googleapis.com/instance/cpu/utilization\""
+      duration        = "60s"
+      comparison      = "COMPARISON_GT"
+      threshold_value = 0.8
+
+      aggregations {
+        alignment_period   = "60s"
+        per_series_aligner = "ALIGN_MEAN"
+      }
+    }
+  }
+}
+```
+
+---
+
+# Secret Manager
+
+## secret-manager/main.tf
+
+```hcl
+resource "google_secret_manager_secret" "secret" {
+  secret_id = "app-secret"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "secret_version" {
+  secret      = google_secret_manager_secret.secret.id
+  secret_data = "my-secret-password"
+}
+```
+
+---
+
+# Cloud Scheduler
+
+## scheduler/main.tf
+
+```hcl
+resource "google_cloud_scheduler_job" "job" {
+  name        = "sample-job"
+  description = "Runs every 5 minutes"
+  schedule    = "*/5 * * * *"
+  time_zone   = "Asia/Kolkata"
+
+  http_target {
+    http_method = "GET"
+    uri         = "https://example.com"
+  }
+}
+```
+
+---
+
+# Cloud Tasks
+
+## cloud-tasks/main.tf
+
+```hcl
+resource "google_cloud_tasks_queue" "queue" {
+  name     = "task-queue"
+  location = "asia-south1"
+}
+```
+
+---
+
+# Filestore
+
+## filestore/main.tf
+
+```hcl
+resource "google_filestore_instance" "instance" {
+  name     = "filestore-instance"
+  location = "asia-south1-a"
+  tier     = "BASIC_HDD"
+
+  file_shares {
+    capacity_gb = 1024
+    name        = "share1"
+  }
+
+  networks {
+    network = "default"
+    modes   = ["MODE_IPV4"]
+  }
+}
+```
+
+---
+
+# Service Directory
+
+## service-directory/main.tf
+
+```hcl
+resource "google_service_directory_namespace" "namespace" {
+  namespace_id = "app-namespace"
+  location     = "asia-south1"
+}
+```
+
+---
+
+# Workflows
+
+## workflows/main.tf
+
+```hcl
+resource "google_workflows_workflow" "workflow" {
+  name            = "sample-workflow"
+  region          = "asia-south1"
+  description     = "Sample workflow"
+  service_account = "default"
+
+  source_contents = <<-EOF
+  main:
+    steps:
+      - init:
+          assign:
+            - message: "Hello World"
+      - return_output:
+          return: ${message}
+  EOF
+}
+```
+
+---
+
+# Terraform Commands
+
+## Initialize
+
+```bash
+terraform init
+```
+
+## Validate
+
+```bash
+terraform validate
+```
+
+## Plan
+
+```bash
+terraform plan
+```
+
+## Apply
+
+```bash
+terraform apply -auto-approve
+```
+
+## Destroy
+
+```bash
+terraform destroy -auto-approve
+```
+
+---
+
+# Recommended Enterprise Additions
+
+You can further expand with:
+
+* Cloud Armor
+* Apigee
+* Vertex AI
+* Dataflow
+* Dataproc
+* Composer
+* AlloyDB
+* Spanner
+* Firestore
+* Firebase
+* Cloud CDN
+* Cloud NAT
+* VPN
+* Interconnect
+* KMS
+* Binary Authorization
+* Security Command Center
+* Chronicle
+* Eventarc
+* TPU
+* AI Platform
+* Looker
+* Migration Center
+* Bare Metal Solution
+* Managed Kafka
+* Cloud Deploy
+* Config Connector
+* Anthos
+
+---
+
+# Best Practice Recommendations
+
+* Use Terraform modules
+* Store state in GCS backend
+* Use separate environments
+* Enable IAM least privilege
+* Use Secret Manager instead of hardcoded passwords
+* Use CI/CD pipelines
+* Enable audit logs
+* Use remote state locking
+
+---
+
+# Remote Backend Example
+
+## backend.tf
+
+```hcl
+terraform {
+  backend "gcs" {
+    bucket = "terraform-state-bucket"
+    prefix = "prod"
+  }
+}
+```
+
+---
+
+# Authentication
+
+## Authenticate Terraform
+
+```bash
+gcloud auth application-default login
+```
+
+OR
+
+```bash
+export GOOGLE_APPLICATION_CREDENTIALS="/path/key.json"
+```
+
+---
+
+# Next Level Structure
+
+Production teams usually create:
+
+```text
+modules/
+├── networking
+├── compute
+├── gke
+├── sql
+├── monitoring
+├── security
+└── iam
+
+environments/
+├── dev
+├── uat
+└── prod
+```
+
+---
+
+# Important Note
+
+Google Cloud continuously adds new services and Terraform resources. For a full updated list of all supported Terraform resources:
+
+Terraform Google Provider Documentation:
+
+[https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources)

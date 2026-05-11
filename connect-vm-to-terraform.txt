@@ -1,0 +1,109 @@
+1. Connect to your Ubuntu VM
+
+Using gcloud:
+
+gcloud compute ssh YOUR_VM_NAME --zone=YOUR_ZONE
+
+Example:
+
+gcloud compute ssh my-vm --zone=asia-south1-a
+
+You can find instances/zones with:
+
+gcloud compute instances list
+2. Install Terraform on Ubuntu VM
+
+SSH into the VM, then run:
+
+sudo apt update && sudo apt install -y gnupg software-properties-common curl
+
+Add HashiCorp GPG key:
+
+curl -fsSL https://apt.releases.hashicorp.com/gpg | \
+sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+
+Add repo:
+
+echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] \
+https://apt.releases.hashicorp.com $(lsb_release -cs) main" | \
+sudo tee /etc/apt/sources.list.d/hashicorp.list
+
+Install Terraform:
+
+sudo apt update && sudo apt install -y terraform
+
+Verify:
+
+terraform version
+3. Authenticate Terraform to GCP
+
+Since you're already on a GCP VM, easiest method:
+
+gcloud auth application-default login
+
+Or for production/recommended usage, attach a service account to the VM with required IAM roles.
+
+Check current auth:
+
+gcloud auth list
+4. Create a Terraform project
+
+Create folder:
+
+mkdir terraform-demo && cd terraform-demo
+
+Create main.tf:
+
+terraform {
+  required_providers {
+    google = {
+      source  = "hashicorp/google"
+      version = "~> 5.0"
+    }
+  }
+}
+
+provider "google" {
+  project = "YOUR_PROJECT_ID"
+  region  = "asia-south1"
+  zone    = "asia-south1-a"
+}
+
+resource "google_compute_instance" "vm_instance" {
+  name         = "terraform-vm"
+  machine_type = "e2-medium"
+  zone         = "asia-south1-a"
+
+  boot_disk {
+    initialize_params {
+      image = "ubuntu-os-cloud/ubuntu-2204-lts"
+    }
+  }
+
+  network_interface {
+    network = "default"
+
+    access_config {
+    }
+  }
+}
+5. Run Terraform
+
+Initialize:
+
+terraform init
+
+Preview changes:
+
+terraform plan
+
+Create resources:
+
+terraform apply
+
+Type:
+
+yes
+6. Destroy resources later
+terraform destroy
+Useful GCP Terraform Provider Docs
